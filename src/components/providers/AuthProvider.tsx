@@ -4,22 +4,24 @@ import { useEffect } from 'react'
 import { useAuthStore } from '@/stores/auth'
 import pb from '@/lib/pocketbase'
 
+type TypedAuthStore = typeof pb.authStore
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { login, logout } = useAuthStore()
 
   useEffect(() => {
-    // Load auth state on mount
-    if (pb.authStore.isValid && pb.authStore.record) {
+    const auth = pb.authStore as TypedAuthStore & { record?: { id: string; email: string; name?: string; role?: string; debt_ceiling?: number } | null }
+
+    if (auth.isValid && auth.record) {
       login({
-        id: pb.authStore.record.id,
-        email: pb.authStore.record.email,
-        name: pb.authStore.record.name,
-        role: pb.authStore.record.role,
-        debt_ceiling: pb.authStore.record.debt_ceiling,
+        id: auth.record.id,
+        email: auth.record.email,
+        name: auth.record.name,
+        role: auth.record.role,
+        debt_ceiling: auth.record.debt_ceiling,
       })
     }
 
-    // Listen for auth changes
     const unsubscribe = pb.authStore.onChange((token, record) => {
       if (record) {
         login({
