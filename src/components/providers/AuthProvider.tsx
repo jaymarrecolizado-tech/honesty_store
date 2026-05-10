@@ -13,12 +13,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const auth = pb.authStore as TypedAuthStore & { record?: { id: string; email: string; name?: string; role?: string; debt_ceiling?: number } | null }
 
     if (auth.isValid && auth.record) {
+      const record = auth.record!
+      const role = (record.role as 'customer' | 'admin') ?? 'customer'
       login({
-        id: auth.record.id,
-        email: auth.record.email,
-        name: auth.record.name,
-        role: auth.record.role,
-        debt_ceiling: auth.record.debt_ceiling,
+        id: record.id,
+        email: record.email,
+        name: record.name,
+        role,
+        debt_ceiling: record.debt_ceiling,
       })
     }
 
