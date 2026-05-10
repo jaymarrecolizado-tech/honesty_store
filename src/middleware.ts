@@ -10,7 +10,7 @@ export async function middleware(request: NextRequest) {
   }
 
   const isAuthenticated = pb.authStore.isValid
-  const user = pb.authStore.record
+  const user = pb.authStore.record as { role?: string } | null
   const { pathname } = request.nextUrl
 
   // Public routes that don't require authentication

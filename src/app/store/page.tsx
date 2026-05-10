@@ -6,10 +6,26 @@ import { ProductGrid } from '@/components/product/ProductGrid'
 import { ProductFilters } from '@/components/product/ProductFilters'
 import { useState } from 'react'
 
+interface Category {
+  id: string
+  name: string
+  description?: string
+}
+
+interface Product {
+  id: string
+  name: string
+  description?: string
+  price: number
+  stock_qty: number
+  category: string
+  image?: string
+}
+
 export default function StorePage() {
   const [selectedCategory, setSelectedCategory] = useState<string>('')
 
-  const { data: products, isLoading: productsLoading } = useQuery({
+  const { data: rawProducts, isLoading: productsLoading } = useQuery({
     queryKey: ['products', selectedCategory],
     queryFn: async () => {
       const filter = selectedCategory ? `category = '${selectedCategory}'` : ''
@@ -21,7 +37,7 @@ export default function StorePage() {
     },
   })
 
-  const { data: categories } = useQuery({
+  const { data: rawCategories } = useQuery({
     queryKey: ['categories'],
     queryFn: async () => {
       const records = await pb.collection('categories').getList(1, 50, {
@@ -30,6 +46,22 @@ export default function StorePage() {
       return records.items
     },
   })
+
+  const products: Product[] = (rawProducts || []).map(p => ({
+    id: p.id,
+    name: p.name,
+    description: p.description,
+    price: p.price,
+    stock_qty: p.stock_qty,
+    category: p.category,
+    image: p.image,
+  }))
+
+  const categories: Category[] = (rawCategories || []).map(c => ({
+    id: c.id,
+    name: c.name,
+    description: c.description,
+  }))
 
   return (
     <div className="space-y-8">
