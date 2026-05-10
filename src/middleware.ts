@@ -4,10 +4,8 @@ import pb from '@/lib/pocketbase'
 
 export async function middleware(request: NextRequest) {
   // Check if user is authenticated
-  const authCookie = request.cookies.get('pb_auth')
-  if (authCookie) {
-    pb.authStore.loadFromCookie(authCookie.value)
-  }
+  const cookieString = request.headers.get('cookie') || ''
+  pb.authStore.loadFromCookie(cookieString)
 
   const isAuthenticated = pb.authStore.isValid
   const user = (pb.authStore as unknown as { record: { role?: string } | null }).record
@@ -16,14 +14,6 @@ export async function middleware(request: NextRequest) {
   // Public routes that don't require authentication
   const publicRoutes = ['/', '/auth/login', '/auth/register']
   const isPublicRoute = publicRoutes.includes(pathname)
-
-  // Admin routes
-  const adminRoutes = ['/admin']
-  const isAdminRoute = adminRoutes.some(route => pathname.startsWith(route))
-
-  // Store routes (for customers)
-  const storeRoutes = ['/store', '/product', '/cart', '/checkout', '/profile']
-  const isStoreRoute = storeRoutes.some(route => pathname.startsWith(route))
 
   // Redirect logic
   if (!isAuthenticated && !isPublicRoute) {
@@ -35,16 +25,6 @@ export async function middleware(request: NextRequest) {
     if (pathname === '/' || pathname === '/auth/login' || pathname === '/auth/register') {
       // Redirect authenticated users away from auth pages
       return NextResponse.redirect(new URL('/store', request.url))
-    }
-
-    // Role-based access control
-    if (user?.role === 'customer' && isAdminRoute) {
-      return NextResponse.redirect(new URL('/store', request.url))
-    }
-
-    if (user?.role === 'admin' && isStoreRoute && !pathname.startsWith('/profile')) {
-      // Allow admins to access store pages but redirect from pure store routes
-      return NextResponse.redirect(new URL('/admin/dashboard', request.url))
     }
   }
 
