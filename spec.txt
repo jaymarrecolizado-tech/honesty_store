@@ -1,0 +1,109 @@
+DICT Region 2
+Electronic Honesty Store
+Spec-Driven Development Document
+Complete Developer Handoff Edition
+1. Project Overview
+1.1 Purpose
+A web-based self-service Point-of-Sale (POS) and inventory system for DICT Region 2 staff. Staff browse goods, add to cart, and checkout via Cash or Debt (utang). Admins manage products, stock, payments, and audit the debt ledger. The system replaces manual tally sheets with a transparent, immutable digital record.
+1.2 Goals
+Mobile-first self-service; P95 page load <2 s on 4G.
+PocketBase as single API layer; MySQL 8 InnoDB as durable data store.
+Atomic stock decrement via PocketBase hooks — stock never goes below zero.
+Immutable debt ledger; balance computed from entries, never stored as a column.
+CSV exports for COA accountability.
+Deployable on Hostinger KVM2 via Docker Compose in a single command.
+1.3 Scope
+1.4 Stakeholders
+1.5 Glossary
+2. System Architecture
+2.1 Tech Stack
+2.2 PocketBase + MySQL — How They Connect
+PocketBase natively uses SQLite. To use MySQL 8 the binary must be built from source with the MySQL driver. This is done once and the resulting binary is baked into the Docker image.
+PocketBase reads DB_DSN on startup and connects to MySQL via tcp.
+All pb_migrations/*.js files run automatically in alphabetical order on first boot.
+pb_hooks/*.js files implement custom business logic (checkout, debt payments, audit logging).
+PocketBase file storage (product images) is mapped to ./pb_data volume.
+2.3 Request Flow — Self-Service Checkout
+2.4 Frontend Route Map
+All routes are under /src/app/ using Next.js 14 App Router conventions.
+2.5 Middleware (Next.js)
+File: src/middleware.ts — runs on every request before rendering.
+Reads PocketBase auth cookie; calls pb.authStore.isValid.
+Unauthenticated user on any non-/ route → redirect to /.
+Customer accessing /admin/* → redirect to /store.
+Admin accessing /store/* or /my-account → allow (admin can browse as customer too).
+Sets response header x-user-role for use in Server Components.
+2.6 PocketBase SDK Initialisation
+File: src/lib/pocketbase.ts — singleton used across all pages.
+3. Functional Requirements
+Stories follow Given / When / Then. Priority: Must = MVP blocker | Should = high value | Could = nice-to-have.
+3.1 Authentication
+3.2 Product Catalog
+3.3 Cart & Checkout
+3.4 Admin Inventory
+3.5 Admin Point-of-Sale
+3.6 Debt Management
+3.7 Reports
+4. PocketBase Collection Schema
+All collections are defined in pb_migrations JS files. PocketBase maps them to MySQL InnoDB tables. Balance is always computed (SUM of debt_ledger.amount per user) — never stored as a column.
+4.1 users (Auth collection)
+4.2 categories
+4.3 products
+4.4 orders
+4.5 order_items
+4.6 debt_ledger (immutable)
+4.7 stock_movements (immutable)
+4.8 audit_logs
+5. API Specification
+PocketBase auto-generates CRUD endpoints for all collections at /api/collections/{name}/records. Custom endpoints live in pb_hooks/. All endpoints require Authorization: {token} unless marked Public.
+5.1 PocketBase Built-in Auth Endpoints
+5.2 Standard Collection Endpoints
+PocketBase auto-generates these. Access rules set in collection settings.
+5.3 POST /api/checkout (Custom Hook)
+Hook transaction steps (all or nothing):
+SELECT products FOR UPDATE where id IN (item ids) — acquires InnoDB row-level locks.
+Validate stockQty >= requested qty for each item. Throw 409 if insufficient.
+If paymentType=debt AND debtCeiling=0 → throw 402 "not allowed".
+If paymentType=debt AND debtCeiling IS NULL → skip ceiling check (unlimited).
+If paymentType=debt AND debtCeiling>0 → compute SUM(debt_ledger.amount) for user; if balance+total > ceiling → throw 402 with remaining.
+Create order record.
+Create order_items with unitPrice snapshot.
+Decrement stockQty on each product.
+Create stock_movements records (reason=sale, actorId=userId).
+If paymentType=debt → create debt_ledger entry (type=purchase, amount=+total).
+5.4 POST /api/debt/payments (Custom Hook — Admin Only)
+5.5 GET /api/debt/balance
+Auth: Admin or the user themselves. Query param: userId
+5.6 Report / Export Endpoints (Custom Hooks — Admin Only)
+6. PocketBase Build & Setup
+Because PocketBase defaults to SQLite, the binary must be compiled from source with a MySQL driver. This section gives developers everything needed to do that correctly.
+6.1 Dockerfile — PocketBase with MySQL Driver
+File: ./pocketbase/Dockerfile
+6.2 Checkout Hook Skeleton
+File: ./pb_hooks/checkout.js
+This is the most critical file in the system. It must be created before any checkout can occur.
+6.3 Debt Payment Hook Skeleton
+File: ./pb_hooks/debtPayments.js
+6.4 pb_migrations Naming Convention
+6.5 Migration File Template
+Every migration file must export migrate() and rollback(). Example for categories:
+7. Non-Functional Requirements
+8. Deployment
+8.1 Prerequisites (Hostinger KVM2)
+Ubuntu 22.04 LTS with sudo access
+Docker Engine 25+ and Docker Compose v2 installed
+Domain pointed to server IP; Certbot installed for Let's Encrypt TLS
+Ports 80 and 443 open in firewall (ufw allow 80; ufw allow 443)
+8.2 docker-compose.yml
+8.3 nginx.conf
+8.4 .env.example
+8.5 First-Boot Steps
+Run these commands once on the server after cloning the repository:
+8.6 Nightly Backup Cron
+9. Seed Data Script
+Run this once after first boot to populate demo data for testing and UAT. File: ./scripts/seed.js
+10. Testing Strategy
+10.1 Test Levels
+10.2 Critical Test Cases (Must Pass Before Go-Live)
+11. Build Phases
+12. Change Log
