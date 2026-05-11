@@ -10,7 +10,7 @@ migrate((db) => {
       required: false,
       options: {
         maxSelect: 1,
-        values: ["customer", "admin"]
+        values: ["customer", "admin", "cashier"]
       }
     }));
     users.schema.addField(new SchemaField({

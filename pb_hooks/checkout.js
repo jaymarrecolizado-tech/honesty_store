@@ -24,6 +24,16 @@ routerAdd('POST', '/checkout', (c) => {
         throw new ForbiddenError('Authentication required')
     }
 
+    const { customerId } = $apis.requestInfo(c).body
+    let orderUserId = user.id
+    
+    // Allow cashiers and admins to place orders on behalf of customers
+    if (customerId && (user.getString('role') === 'admin' || user.getString('role') === 'cashier')) {
+        orderUserId = customerId
+    } else if (paymentType === 'debt' && user.getString('role') === 'cashier') {
+        throw new BadRequestError('Customer ID is required for debt payments processed by a cashier')
+    }
+
     // Start transaction
     return $app.dao().runInTransaction(async (tx) => {
         // Get products with row-level locking
@@ -43,12 +53,17 @@ routerAdd('POST', '/checkout', (c) => {
             totalAmount += product.price * item.quantity
         }
 
+        let debtUser = user
+        if (orderUserId !== user.id) {
+            debtUser = tx.findRecordById('users', orderUserId)
+        }
+
         // Check debt ceiling if debt payment
         if (paymentType === 'debt') {
-            const currentBalance = await calculateBalance(tx, user.id)
-            const debtCeiling = user.debt_ceiling || null
+            const currentBalance = await calculateBalance(tx, orderUserId)
+            const debtCeiling = debtUser.getFloat('debt_ceiling') || null
 
-            if (debtCeiling !== null && currentBalance + totalAmount > debtCeiling) {
+            if (debtCeiling !== null && debtCeiling > 0 && currentBalance + totalAmount > debtCeiling) {
                 const remainingCapacity = debtCeiling - currentBalance
                 throw new PaymentRequiredError(`Debt ceiling exceeded. Current balance: ${Math.round(currentBalance/100)}, Ceiling: ${Math.round(debtCeiling/100)}, Remaining capacity: ${Math.round(remainingCapacity/100)}, Requested amount: ${Math.round(totalAmount/100)}`)
             }
@@ -56,7 +71,7 @@ routerAdd('POST', '/checkout', (c) => {
 
         // Create order
         const order = new Record('orders')
-        order.set('user', user.id)
+        order.set('user', orderUserId)
         order.set('total_amount', totalAmount)
         order.set('payment_type', paymentType)
         order.set('status', 'completed')
@@ -91,7 +106,7 @@ routerAdd('POST', '/checkout', (c) => {
         // Debt ledger if debt payment
         if (paymentType === 'debt') {
             const ledger = new Record('debt_ledger')
-            ledger.set('user', user.id)
+            ledger.set('user', orderUserId)
             ledger.set('amount', totalAmount)
             ledger.set('description', `Purchase - Order ${order.id}`)
             await tx.saveRecord(ledger)
@@ -99,13 +114,14 @@ routerAdd('POST', '/checkout', (c) => {
 
         // Audit log
         const audit = new Record('audit_logs')
-        audit.set('user', user.id)
+        audit.set('user', user.id) // keep user.id for the actor who did the action
         audit.set('action', 'checkout')
         audit.set('table_name', 'orders')
         audit.set('record_id', order.id)
         audit.set('new_values', JSON.stringify({
             totalAmount,
             paymentType,
+            orderUserId,
             itemCount: items.length,
             items: items.map(item => ({
                 productId: item.productId,
@@ -117,7 +133,8 @@ routerAdd('POST', '/checkout', (c) => {
         // Log successful checkout
         $app.logger().info('Checkout completed', {
             orderId: order.id,
-            userId: user.id,
+            actorId: user.id,
+            orderUserId,
             totalAmount,
             paymentType,
             itemCount: items.length
@@ -125,7 +142,7 @@ routerAdd('POST', '/checkout', (c) => {
 
         // Return success response
         const remainingBalance = paymentType === 'debt' ?
-            await calculateBalance(tx, user.id) : undefined
+            await calculateBalance(tx, orderUserId) : undefined
 
         return c.json(200, {
             orderId: order.id,

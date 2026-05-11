@@ -31,7 +31,7 @@ export function Header() {
             {user ? (
               <>
                 <Link
-                  href="/cart"
+                  href="/checkout"
                   className="relative p-2 text-gray-600 hover:text-gray-900"
                 >
                   <ShoppingCart className="h-6 w-6" />

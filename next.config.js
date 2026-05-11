@@ -10,6 +10,10 @@ const nextConfig = {
   async rewrites() {
     return [
       {
+        source: '/api/checkout',
+        destination: 'http://pocketbase:8090/checkout',
+      },
+      {
         source: '/api/:path*',
         destination: 'http://pocketbase:8090/api/:path*',
       },

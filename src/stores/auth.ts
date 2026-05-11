@@ -5,7 +5,7 @@ interface User {
   id: string
   email: string
   name?: string
-  role: 'customer' | 'admin'
+  role: 'customer' | 'admin' | 'cashier'
   debt_ceiling?: number
 }
 

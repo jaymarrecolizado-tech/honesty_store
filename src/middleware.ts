@@ -23,7 +23,18 @@ export async function middleware(request: NextRequest) {
 
   if (isAuthenticated) {
     if (pathname === '/' || pathname === '/auth/login' || pathname === '/auth/register') {
-      // Redirect authenticated users away from auth pages
+      // Redirect authenticated users away from auth pages based on role
+      if (user?.role === 'admin') {
+        return NextResponse.redirect(new URL('/admin/dashboard', request.url))
+      } else if (user?.role === 'cashier') {
+        return NextResponse.redirect(new URL('/cashier', request.url))
+      } else {
+        return NextResponse.redirect(new URL('/store', request.url))
+      }
+    }
+
+    // Protect cashier route — only cashiers and admins can access
+    if (pathname.startsWith('/cashier') && user?.role !== 'cashier' && user?.role !== 'admin') {
       return NextResponse.redirect(new URL('/store', request.url))
     }
   }
